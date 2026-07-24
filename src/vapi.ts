@@ -17,6 +17,14 @@ export class VapiCall {
   readonly id: string
   private readonly socket: WebSocket
   private audioHandler: ((pcm: Buffer) => void) | undefined
+  /**
+   * Assistant audio that arrived before anyone registered a handler.
+   *
+   * Vapi starts streaming the greeting the instant the socket opens, which is
+   * before the caller has had a chance to wire up `onAudio` — without this the
+   * first syllables are silently dropped.
+   */
+  private pendingAudio: Buffer[] = []
   private endedHandler: (() => void) | undefined
   private ended = false
 
@@ -27,7 +35,8 @@ export class VapiCall {
     socket.on('message', (data: Buffer | string, isBinary: boolean) => {
       if (isBinary) {
         // Assistant audio: PCM s16le mono at config.audio.sampleRate.
-        this.audioHandler?.(data as Buffer)
+        if (this.audioHandler) this.audioHandler(data as Buffer)
+        else this.pendingAudio.push(data as Buffer)
       } else {
         this.handleControlMessage(data.toString())
       }
@@ -44,7 +53,12 @@ export class VapiCall {
     })
   }
 
-  static async create(): Promise<VapiCall> {
+  /**
+   * @param assistantOverrides applied to this call only, so the saved assistant
+   * config is never modified. The caller owns call policy; this class only
+   * moves audio.
+   */
+  static async create(assistantOverrides: Record<string, unknown> = {}): Promise<VapiCall> {
     const response = await fetch(`${config.vapi.baseUrl}/call`, {
       method: 'POST',
       headers: {
@@ -61,20 +75,7 @@ export class VapiCall {
             sampleRate: config.audio.sampleRate,
           },
         },
-        /*
-         * Per-call overrides, so the saved assistant is never modified.
-         *
-         * Ring gives us no signal for a button press during an active call —
-         * no push, not even an events-API entry — so the button cannot end a
-         * call. These give the assistant its own way out: the endCall tool lets
-         * it hang up when the conversation concludes, and endCallPhrases catch
-         * the goodbyes it was already saying before idling until timeout.
-         */
-        assistantOverrides: {
-          'tools:append': [{ type: 'endCall' }],
-          endCallPhrases: config.vapi.endCallPhrases,
-          maxDurationSeconds: config.call.maxSeconds,
-        },
+        assistantOverrides,
       }),
     })
 
@@ -101,6 +102,8 @@ export class VapiCall {
 
   onAudio(handler: (pcm: Buffer) => void): void {
     this.audioHandler = handler
+    for (const pcm of this.pendingAudio) handler(pcm)
+    this.pendingAudio = []
   }
 
   onEnded(handler: () => void): void {
@@ -112,13 +115,10 @@ export class VapiCall {
     this.socket.send(pcm)
   }
 
-  hangup(): void {
-    if (this.ended || this.socket.readyState !== WebSocket.OPEN) return
-    this.socket.send(JSON.stringify({ type: 'hangup' }))
-  }
-
   close(): void {
-    this.hangup()
+    if (!this.ended && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ type: 'hangup' }))
+    }
     this.socket.close()
     this.markEnded()
   }
@@ -145,10 +145,6 @@ export class VapiCall {
         if (status === 'ended') this.markEnded()
         break
       }
-      case 'hangup':
-      case 'end-call':
-        this.markEnded()
-        break
       default:
         log.debug('vapi:', raw.slice(0, 300))
     }

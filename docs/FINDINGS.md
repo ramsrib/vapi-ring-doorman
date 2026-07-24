@@ -18,8 +18,7 @@ Everything below was observed on this exact setup, on **2026-07-24**.
 ### The device
 
 ```
-name         Office
-id           704424693
+name         (a doorbell on the account)
 kind         df_doorbell_clownfish        # API codename
 product      Ring Battery Doorbell        # from the label on the unit
 model no.    5F97F2
@@ -95,10 +94,11 @@ successful poll — don't treat it as a hardware fact.
 | werift | 0.22.4 (pinned — must match the library's copy) |
 | ws | 8.21.1 |
 | @eneris/push-receiver | 4.3.0 (transitive; carries Ring's push) |
-| Vapi | assistant "Ring - Doorbell", websocket transport, `pcm_s16le` @ 16 kHz |
+| Vapi | a doorbell assistant over the websocket transport, `pcm_s16le` @ 16 kHz |
 
-Identifiers deliberately left out of this doc: the MAC address (a.k.a. the API's
-`device_id`), the DSN from the label, the `location_id` UUID, and the wifi SSID.
+Identifiers deliberately left out of this doc: the Ring device id, the MAC
+address (a.k.a. the API's `device_id`), the DSN from the label, the
+`location_id` UUID, and the wifi SSID.
 The model and FCC IDs above are model-level, not unit-level, so they are safe to
 record.
 
@@ -201,7 +201,7 @@ the dead end. See the auth note above for the likely reason.
 For reference, `dings/active` during our own live call returns:
 
 ```jsonc
-{ "id_str": "7666222543358700277", "state": "ringing", "protocol": "sip",
+{ "id_str": "<ding id>", "state": "ringing", "protocol": "sip",
   "kind": "on_demand", "device_kind": "df_doorbell_clownfish" }
 ```
 
@@ -236,7 +236,7 @@ invitation. A live call's `dings/active` entry contains:
 
 ```jsonc
 { "protocol": "sip",
-  "sip_server_ip": "35.164.23.9", "sip_server_port": 8557, "sip_server_tls": true,
+  "sip_server_ip": "<aws ip>", "sip_server_port": 8557, "sip_server_tls": true,
   "sip_from": "sip:<doorbot_id>@ring.com",
   "sip_to": "sip:<795-char JWT>",
   "sip_session_id": "<759-char JWT>",

@@ -1,9 +1,9 @@
 /** Counts raw RTP packets from Ring, upstream of any ffmpeg work. */
-import { connectRing } from '../ring.ts'
+import { connectRing, startSpeakerCall } from '../ring.ts'
 import { log } from '../log.ts'
 
 const { api, camera } = await connectRing()
-const session = await camera.startLiveCall()
+const { session, usingOpus } = await startSpeakerCall(camera)
 
 let audioPackets = 0
 let audioBytes = 0
@@ -16,8 +16,7 @@ session.onAudioRtp.subscribe((rtp) => {
 session.onVideoRtp.subscribe(() => videoPackets++)
 session.onCallEnded.subscribe(() => log.info('ring ended the call'))
 
-log.info(`opus: ${await session.isUsingOpus}`)
-session.activateCameraSpeaker()
+log.info(`opus: ${usingOpus}`)
 
 const timer = setInterval(
   () => log.info(`audio rtp: ${audioPackets} packets / ${audioBytes}B   video rtp: ${videoPackets} packets`),

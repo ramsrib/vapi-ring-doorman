@@ -9,8 +9,9 @@ import { log } from '../log.ts'
 
 const { camera } = await connectRing()
 
+// Every push, not just doorbell presses — motion and other categories too.
 camera.onNewNotification.subscribe((notification) => {
-  log.info(`notification: ${notification.android_config.category} (ding id ${notification.data.event.ding.id})`)
+  log.info(`push: ${notification.android_config.category} (ding id ${notification.data.event.ding.id})`)
 })
 
 watchForDings(camera, (source) => log.info(`>>> DOORBELL PRESSED (via ${source})`))

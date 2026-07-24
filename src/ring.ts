@@ -8,7 +8,14 @@ export interface RingConnection {
   camera: RingCamera
 }
 
-export async function connectRing(): Promise<RingConnection> {
+/**
+ * The only place a RingApi should be constructed.
+ *
+ * Ring rotates the refresh token on login, so anything that authenticates must
+ * also persist the new one — a tool that skips this leaves `.env` holding a
+ * dead token and breaks the next run.
+ */
+export function createRingApi(): RingApi {
   const api = new RingApi({
     refreshToken: config.ring.refreshToken,
     debug: config.debug,
@@ -22,6 +29,11 @@ export async function connectRing(): Promise<RingConnection> {
     log.info('ring: refresh token rotated, .env updated')
   })
 
+  return api
+}
+
+export async function connectRing(): Promise<RingConnection> {
+  const api = createRingApi()
   const cameras = await api.getCameras()
   if (cameras.length === 0) {
     throw new Error('No Ring cameras on this account')
@@ -58,6 +70,25 @@ function pickCamera(cameras: RingCamera[], wanted: string): RingCamera {
   return doorbell ?? cameras[0]!
 }
 
+export interface SpeakerCall {
+  session: Awaited<ReturnType<RingCamera['startLiveCall']>>
+  /** Ring answers with opus normally, pcmu on some devices. */
+  usingOpus: boolean
+}
+
+/**
+ * Opens a live call with the speaker enabled.
+ *
+ * `activateCameraSpeaker()` is load-bearing and easy to leave out: without it
+ * the call connects, audio flows inbound, and the visitor hears silence. It
+ * lives here so no caller has to remember it.
+ */
+export async function startSpeakerCall(camera: RingCamera): Promise<SpeakerCall> {
+  const session = await camera.startLiveCall()
+  session.activateCameraSpeaker()
+  return { session, usingOpus: await session.isUsingOpus }
+}
+
 export interface DingSource {
   stop(): void
 }
@@ -71,13 +102,6 @@ export interface DingSource {
  */
 export function watchForDings(camera: RingCamera, onDing: (source: string) => void): DingSource {
   const subscription = camera.onDoorbellPressed.subscribe(() => onDing('push'))
-
-  // Every push, not just the ones we act on. Ring's behaviour during an active
-  // live call is undocumented — this shows whether a second press arrives as a
-  // ding, as some other category, or not at all.
-  const notifications = camera.onNewNotification.subscribe((notification) => {
-    log.info(`ring: push received — category "${notification.android_config.category}"`)
-  })
 
   let timer: NodeJS.Timeout | undefined
   if (config.ring.dingPollSeconds > 0) {
@@ -113,7 +137,6 @@ export function watchForDings(camera: RingCamera, onDing: (source: string) => vo
   return {
     stop() {
       subscription.unsubscribe()
-      notifications.unsubscribe()
       if (timer) clearInterval(timer)
     },
   }

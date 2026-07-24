@@ -1,8 +1,7 @@
 /** Lists the Ring devices on the account so you can pin RING_CAMERA. */
-import { RingApi } from 'ring-client-api'
-import { config } from '../config.ts'
+import { createRingApi } from '../ring.ts'
 
-const api = new RingApi({ refreshToken: config.ring.refreshToken, debug: config.debug })
+const api = createRingApi()
 const cameras = await api.getCameras()
 
 for (const camera of cameras) {

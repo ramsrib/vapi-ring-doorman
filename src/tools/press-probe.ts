@@ -15,7 +15,7 @@
  * times and watch for anything that appears.
  */
 import { clientApi } from 'ring-client-api/rest-client'
-import { connectRing } from '../ring.ts'
+import { connectRing, startSpeakerCall } from '../ring.ts'
 import { log } from '../log.ts'
 
 const { api, camera } = await connectRing()
@@ -25,10 +25,8 @@ camera.onNewNotification.subscribe((notification) => {
 })
 
 log.info('opening live call...')
-const session = await camera.startLiveCall()
-session.activateCameraSpeaker()
+const { session } = await startSpeakerCall(camera)
 session.onCallEnded.subscribe(() => log.info('call ended'))
-await session.isUsingOpus
 log.info('call is up — PRESS THE DOORBELL BUTTON NOW (a few times)')
 
 const seenDings = new Set<string>()

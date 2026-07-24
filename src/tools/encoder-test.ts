@@ -8,7 +8,7 @@
 import type { StreamingSession } from 'ring-client-api/streaming/streaming-session'
 import type { RtpPacket } from 'werift'
 import { ReturnAudio } from '../return-audio.ts'
-import { synthesize } from '../say.ts'
+import { streamPaced, synthesize } from '../say.ts'
 import { config } from '../config.ts'
 import { log } from '../log.ts'
 
@@ -30,11 +30,7 @@ if (!speech) {
 }
 
 log.info(`feeding ${(speech.length / (sampleRate * 2)).toFixed(1)}s of PCM`)
-const frameBytes = (sampleRate * 2 * config.audio.frameMs) / 1000
-for (let offset = 0; offset < speech.length; offset += frameBytes) {
-  returnAudio.write(speech.subarray(offset, offset + frameBytes))
-  await new Promise((resolve) => setTimeout(resolve, config.audio.frameMs))
-}
+await streamPaced(speech, (frame) => returnAudio.write(frame))
 await new Promise((resolve) => setTimeout(resolve, 1500))
 const pacingSeconds = (performance.now() - pacingStartedAt) / 1000
 returnAudio.stop()

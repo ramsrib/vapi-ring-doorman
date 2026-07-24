@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { bytesForMs, config } from './config.ts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -46,11 +47,11 @@ export function synthesize(text: string, sampleRate: number): Buffer | undefined
   }
 }
 
-/** Minimal RIFF header so raw PCM can be played back by anything. */
-export function toWav(pcm: Buffer, sampleRate: number): Buffer {
+/** Minimal RIFF header, so PCM can be streamed to a file without buffering it. */
+export function wavHeader(byteLength: number, sampleRate: number): Buffer {
   const header = Buffer.alloc(44)
   header.write('RIFF', 0)
-  header.writeUInt32LE(36 + pcm.length, 4)
+  header.writeUInt32LE(36 + byteLength, 4)
   header.write('WAVE', 8)
   header.write('fmt ', 12)
   header.writeUInt32LE(16, 16)
@@ -61,6 +62,34 @@ export function toWav(pcm: Buffer, sampleRate: number): Buffer {
   header.writeUInt16LE(2, 32)
   header.writeUInt16LE(16, 34)
   header.write('data', 36)
-  header.writeUInt32LE(pcm.length, 40)
-  return Buffer.concat([header, pcm])
+  header.writeUInt32LE(byteLength, 40)
+  return header
+}
+
+/** Wraps PCM in a wav container. Prefer `wavHeader` for anything long. */
+export function toWav(pcm: Buffer, sampleRate: number): Buffer {
+  return Buffer.concat([wavHeader(pcm.length, sampleRate), pcm])
+}
+
+/**
+ * Feeds `pcm` to `sink` one frame at a time, in real time — the way the Ring
+ * leg receives it. Used by the test tools so they exercise the same framing the
+ * bridge does. Returns when the audio is spent or `stop()` says otherwise.
+ */
+export async function streamPaced(
+  pcm: Buffer,
+  sink: (frame: Buffer) => void,
+  stop?: () => boolean,
+): Promise<void> {
+  const frameBytes = bytesForMs(config.audio.frameMs)
+  for (let offset = 0; offset < pcm.length; offset += frameBytes) {
+    if (stop?.()) return
+    sink(pcm.subarray(offset, offset + frameBytes))
+    await new Promise((resolve) => setTimeout(resolve, config.audio.frameMs))
+  }
+}
+
+/** Real-time silence, for holding a call open while waiting. */
+export async function streamSilence(ms: number, sink: (frame: Buffer) => void, stop?: () => boolean): Promise<void> {
+  await streamPaced(Buffer.alloc(bytesForMs(ms)), sink, stop)
 }

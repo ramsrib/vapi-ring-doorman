@@ -49,8 +49,12 @@ export const config = {
   audio: {
     /** PCM sample rate used on the Vapi websocket and between the two ffmpeg legs. */
     sampleRate: num('AUDIO_SAMPLE_RATE', 16000),
-    /** Frame size for the paced writer feeding Ring's speaker. */
-    frameMs: num('AUDIO_FRAME_MS', 20),
+    /**
+     * Frame size for the paced writer feeding Ring's speaker. Not an env knob:
+     * it is passed to opus as `-frame_duration`, which accepts only
+     * 2.5/5/10/20/40/60, and the pacing tick derives from it.
+     */
+    frameMs: 20,
     /**
      * Jitter buffer. After the queue runs dry we hold this much audio before
      * resuming, so one late websocket frame costs a single pause instead of a
@@ -80,11 +84,6 @@ export const config = {
     /** Hard stop for a single bridged call. Ring live calls die on their own too. */
     maxSeconds: num('CALL_MAX_SECONDS', 300),
     /**
-     * Presses within this window of answering are ignored (debounce); a press
-     * after it hangs up the call.
-     */
-    cooldownSeconds: num('CALL_COOLDOWN_SECONDS', 5),
-    /**
      * Wait this long after the press before the assistant starts talking, so
      * the greeting lands after the doorbell's own chime rather than under it.
      * Ring's chime duration is in the device settings (currently 10s), but the
@@ -99,6 +98,25 @@ export const config = {
     muteChimeDuringCall: process.env.MUTE_CHIME_DURING_CALL !== 'false',
   },
   debug: process.env.DEBUG === 'true',
+  /**
+   * Write each leg of a call to a wav on hangup: `ring-in.wav` is what the
+   * doorbell heard, `vapi-in.wav` what the assistant said. The fastest way to
+   * tell a dead microphone from a dead speaker.
+   */
+  recordCalls: process.env.RECORD === 'true',
+}
+
+/** Bytes of 16-bit mono PCM per second, at the configured sample rate. */
+export const bytesPerSecond = config.audio.sampleRate * 2
+
+/** Bytes of 16-bit mono PCM holding `ms` of audio. */
+export function bytesForMs(ms: number): number {
+  return Math.round((bytesPerSecond * ms) / 1000)
+}
+
+/** Seconds of audio in `bytes` of 16-bit mono PCM. */
+export function secondsOfBytes(bytes: number): number {
+  return bytes / bytesPerSecond
 }
 
 /**

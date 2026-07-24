@@ -10,29 +10,21 @@ const { api, camera } = await connectRing()
 await restoreChimeFromDisk(camera)
 
 let current: BridgedCall | undefined
-let answeredAt = 0
 
+/*
+ * Ring suppresses the doorbell while a call is active — a press mid-call
+ * produces no push and no events-API entry at all (verified 2026-07-24), so
+ * this guard only ever trips on a duplicate push. Calls end via the assistant's
+ * endCall tool, an end-call phrase, Vapi's silence timeout, Enter here, or
+ * CALL_MAX_SECONDS.
+ */
 async function answer(source: string): Promise<void> {
   if (current) {
-    /*
-     * Kept, but it will almost never fire: Ring suppresses the doorbell while
-     * a call is active. Pressing the button mid-call produces no push and no
-     * events-API entry at all (verified 2026-07-24), so there is nothing to
-     * react to. Calls end via the assistant's endCall tool, an end-call phrase,
-     * Vapi's silence timeout, Enter in this terminal, or CALL_MAX_SECONDS.
-     */
-    const sinceAnswer = Date.now() - answeredAt
-    if (sinceAnswer < config.call.cooldownSeconds * 1000) {
-      log.info(`ding (${source}) ignored — call just started`)
-    } else {
-      log.info(`ding (${source}) — hanging up`)
-      current.hangup('button pressed again')
-    }
+    log.info(`ding (${source}) ignored — a call is already in progress`)
     return
   }
 
   log.info(`ding (${source}) — answering`)
-  answeredAt = Date.now()
   const call = bridgeCall(camera)
   current = call
   try {

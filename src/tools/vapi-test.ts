@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs'
 import { config } from '../config.ts'
 import { log } from '../log.ts'
 import { VapiCall } from '../vapi.ts'
-import { synthesize, toWav } from '../say.ts'
+import { streamPaced, streamSilence, synthesize, toWav } from '../say.ts'
 
 const sampleRate = config.audio.sampleRate
 const phrase = process.env['SAY'] ?? 'Hi, I am delivering a package. Where should I leave it?'
@@ -35,38 +35,21 @@ call.onEnded(() => {
   ended = true
 })
 
-const frameBytes = (sampleRate * 2 * config.audio.frameMs) / 1000
-const silence = Buffer.alloc(frameBytes)
-
-/** Feed the call in real time, like the Ring leg would. */
-async function stream(pcm: Buffer): Promise<void> {
-  for (let offset = 0; offset < pcm.length && !ended; offset += frameBytes) {
-    call.sendAudio(pcm.subarray(offset, offset + frameBytes))
-    await new Promise((resolve) => setTimeout(resolve, config.audio.frameMs))
-  }
-}
-
-async function streamSilence(ms: number): Promise<void> {
-  for (let elapsed = 0; elapsed < ms && !ended; elapsed += config.audio.frameMs) {
-    call.sendAudio(silence)
-    await new Promise((resolve) => setTimeout(resolve, config.audio.frameMs))
-  }
-}
 
 // Let the assistant deliver its greeting first, as it would to a visitor.
 log.info('listening for the greeting')
-await streamSilence(6000)
+await streamSilence(6000, (f) => call.sendAudio(f), () => ended)
 
 const speech = synthesize(phrase, sampleRate)
 if (speech) {
   log.info(`speaking: "${phrase}"`)
-  await stream(speech)
+  await streamPaced(speech, (f) => call.sendAudio(f), () => ended)
 } else {
   log.warn('no macOS `say` available — sending silence only')
 }
 
 log.info('waiting for the reply')
-await streamSilence(9000)
+await streamSilence(9000, (f) => call.sendAudio(f), () => ended)
 
 const audio = Buffer.concat(received)
 log.info(`received ${(audio.length / (sampleRate * 2)).toFixed(1)}s of assistant audio in ${received.length} chunks`)
@@ -78,7 +61,7 @@ if (arrivalGaps.length > 0) {
   const at = (q: number) => sorted[Math.floor(sorted.length * q)]!.toFixed(0)
   log.info(
     `chunk arrival gaps: p50 ${at(0.5)}ms  p95 ${at(0.95)}ms  p99 ${at(0.99)}ms  ` +
-      `max ${Math.max(...arrivalGaps).toFixed(0)}ms`,
+      `max ${sorted[sorted.length - 1]!.toFixed(0)}ms`,
   )
 }
 

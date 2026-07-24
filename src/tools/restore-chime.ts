@@ -5,7 +5,7 @@
  *   VOLUME=4 npm run restore-chime  # or set it explicitly
  */
 import { connectRing } from '../ring.ts'
-import { restoreChimeFromDisk } from '../chime.ts'
+import { currentVolume, restoreChimeFromDisk } from '../chime.ts'
 import { log } from '../log.ts'
 
 const { api, camera } = await connectRing()
@@ -16,8 +16,7 @@ if (explicit) {
   log.info(`chime: set doorbell_volume to ${explicit}`)
 } else {
   await restoreChimeFromDisk(camera)
-  const settings = (camera.data as { settings?: { doorbell_volume?: number } }).settings
-  log.info(`chime: doorbell_volume is ${settings?.doorbell_volume ?? 'unknown'} (cached value, may lag a few seconds)`)
+  log.info(`chime: doorbell_volume is ${currentVolume(camera) ?? 'unknown'} (cached value, may lag a few seconds)`)
   log.info('still silent? re-run with VOLUME=4')
 }
 

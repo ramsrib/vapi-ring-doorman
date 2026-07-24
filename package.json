@@ -1,9 +1,18 @@
 {
-  "name": "ring-vapi-doorman",
+  "name": "vapi-ring-doorman",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Answer the Ring doorbell with a Vapi assistant: button press -> live Ring call -> two-way audio bridge -> Vapi",
+  "license": "MIT",
+  "keywords": [
+    "ring",
+    "doorbell",
+    "vapi",
+    "voice-ai",
+    "webrtc",
+    "sip",
+    "opus"
+  ],
   "engines": {
     "node": ">=22.18"
   },

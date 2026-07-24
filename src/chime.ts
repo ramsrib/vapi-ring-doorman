@@ -2,6 +2,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import type { RingCamera } from 'ring-client-api'
+import { config } from './config.ts'
 import { log } from './log.ts'
 
 const statePath = join(dirname(fileURLToPath(import.meta.url)), '..', '.chime-state.json')
@@ -11,7 +12,12 @@ interface ChimeState {
   doorbellVolume: number
 }
 
-function currentVolume(camera: RingCamera): number | undefined {
+/**
+ * Reads the chime volume from the cached device data. Ring's cache lags a
+ * `setSettings` by several seconds — re-fetch via `fetchRingDevices()` when you
+ * need the authoritative value.
+ */
+export function currentVolume(camera: RingCamera): number | undefined {
   const settings = (camera.data as { settings?: { doorbell_volume?: number } }).settings
   return settings?.doorbell_volume
 }
@@ -24,6 +30,8 @@ function currentVolume(camera: RingCamera): number | undefined {
  * otherwise leave it permanently silent with no clue why.
  */
 export async function muteChime(camera: RingCamera): Promise<() => Promise<void>> {
+  if (!config.call.muteChimeDuringCall) return async () => {}
+
   const original = currentVolume(camera)
   if (original === undefined) {
     log.debug('chime: device exposes no doorbell_volume, leaving it alone')
