@@ -15,6 +15,8 @@
     "dings": "node --env-file=.env src/tools/dings.ts",
     "speaker-test": "node --env-file=.env src/tools/speaker-test.ts",
     "vapi-test": "node --env-file=.env src/tools/vapi-test.ts",
+    "encoder-test": "node --env-file=.env src/tools/encoder-test.ts",
+    "rtp-probe": "node --env-file=.env src/tools/rtp-probe.ts",
     "auth": "ring-auth-cli",
     "typecheck": "tsc --noEmit"
   },

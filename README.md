@@ -82,26 +82,38 @@ you press the button:
 2. Set `RING_DING_POLL_SECONDS=5` in `.env`. That polls the events API instead;
    it adds a few seconds of delay but does not depend on push at all.
 
-## Status
+## Status — blocked on the doorbell being offline
 
-**Vapi leg: verified live** (2026-07-24). `npm run vapi-test` held a real
-conversation with the "Ring - Doorbell" assistant — synthesized visitor speech
-in, correct transcripts back (`user — Hi. I have a package for Sriram.`), 23.6 s
-of assistant audio captured to a wav at sane levels. That covers call creation,
-the websocket protocol, the PCM format contract in both directions, and the 20 ms
-frame pacing.
+Verified live on 2026-07-24:
 
-**Ring leg: not yet run.** The refresh token in `.env` expired and
-re-authenticating needs an interactive 2FA login:
+- **Ring auth and call setup.** `npm run call` authenticates, opens a live call,
+  and Ring answers with opus. Token rotation writes back to `.env` as designed.
+- **The Vapi leg.** `npm run vapi-test` held a real conversation: synthesized
+  visitor speech in, correct transcripts back (`user — Hi. I have a package for
+  Sriram.`), 23.6 s of assistant audio captured to a wav at sane levels.
+- **The speaker leg, up to the handoff.** `npm run encoder-test` pushes PCM
+  through the return-audio pipeline and inspects the result: 163 opus RTP
+  packets, payload type 97, timestamps stepping exactly 960 (20 ms at 48 kHz),
+  contiguous. In a live call, 18.6 s of assistant audio reached this stage.
+
+What is not working, and it isn't the code: **the doorbell is offline.**
+`npm run rtp-probe` opens a live call and counts raw RTP arriving from Ring —
+zero packets, audio *and* video, across 22 s, after which Ring's servers tear the
+call down. The device backs that up: `alerts.connection: "offline"`, null signal
+strength, null wifi name, `ring_id: null`, no events in history. It is owned by
+this account (`doorbots`, not `authorizedDoorbots`), so it isn't a permissions
+problem. Ring's cloud negotiates the session happily; the hardware never joins.
+
+Once the doorbell is back on wifi:
 
 ```bash
-npm run auth      # then paste the token into .env
-npm run doctor    # ring auth should flip to ok
-npm run speaker-test   # first real signal: your voice out of the doorbell
-npm run call           # full bridge, without waiting for a button press
-npm start              # the real thing
+npm run doctor          # "target camera reachable" should stop failing
+npm run rtp-probe       # expect a rising packet count, not zeros
+npm run speaker-test    # first audible signal: your voice out of the doorbell
+npm run call            # full bridge on demand
+npm start               # the real thing — press the button
 ```
 
-Unknowns that only the hardware can settle: whether ding pushes arrive (the old
-project's dead end — fall back to `RING_DING_POLL_SECONDS=5`), and the true
-round-trip latency once opus transcoding sits on both ends.
+Still unknown until then: whether ding pushes arrive (the old project's dead
+end — fall back to `RING_DING_POLL_SECONDS=5`), and real round-trip latency with
+opus transcoding on both ends.
