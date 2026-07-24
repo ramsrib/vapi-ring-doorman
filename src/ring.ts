@@ -89,6 +89,13 @@ export async function startSpeakerCall(camera: RingCamera): Promise<SpeakerCall>
   return { session, usingOpus: await session.isUsingOpus }
 }
 
+export interface Ding {
+  /** How we heard about it: a push notification, or the polling fallback. */
+  source: string
+  /** Ring's id for this press, used to follow what becomes of it. */
+  id?: string
+}
+
 export interface DingSource {
   stop(): void
 }
@@ -100,8 +107,10 @@ export interface DingSource {
  * near-instant. The optional poller is a backstop for when push registration
  * breaks — it costs one API call per interval and lands a few seconds late.
  */
-export function watchForDings(camera: RingCamera, onDing: (source: string) => void): DingSource {
-  const subscription = camera.onDoorbellPressed.subscribe(() => onDing('push'))
+export function watchForDings(camera: RingCamera, onDing: (ding: Ding) => void): DingSource {
+  const subscription = camera.onDoorbellPressed.subscribe((notification) =>
+    onDing({ source: 'push', id: String(notification.data.event.ding.id) }),
+  )
 
   let timer: NodeJS.Timeout | undefined
   if (config.ring.dingPollSeconds > 0) {
@@ -122,7 +131,7 @@ export function watchForDings(camera: RingCamera, onDing: (source: string) => vo
         }
         if (newest.ding_id_str !== lastSeenDingId) {
           lastSeenDingId = newest.ding_id_str
-          onDing('poll')
+          onDing({ source: 'poll', id: newest.ding_id_str })
         }
       } catch (e) {
         log.debug('ring: ding poll failed', e)
@@ -140,4 +149,45 @@ export function watchForDings(camera: RingCamera, onDing: (source: string) => vo
       if (timer) clearInterval(timer)
     },
   }
+}
+
+/**
+ * Waits to see whether a person answers the press in the Ring app.
+ *
+ * Ring tracks this itself: a ding ends up `timed_out` when nobody picks up, and
+ * `completed` when someone does — which we can read back from the events API.
+ * (Our own bridge answering also lands as `completed`, which is what confirmed
+ * the mapping; see docs/FINDINGS.md.)
+ *
+ * Resolves `true` if a person answered, `false` if the assistant should step in.
+ * Ambiguity resolves to `false`: a missed visitor is a worse outcome than an
+ * assistant that speaks up unnecessarily.
+ */
+export async function waitForHumanAnswer(camera: RingCamera, ding: Ding, seconds: number): Promise<boolean> {
+  const deadline = Date.now() + seconds * 1000
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+
+    if (!ding.id) continue
+    try {
+      const { events } = await camera.getEvents({ limit: 5, kind: 'ding' })
+      const match = events.find((event) => event.ding_id_str === ding.id)
+      if (!match) continue
+
+      log.debug(`ring: ding ${ding.id} state=${match.state}`)
+      if (match.state === 'timed_out') {
+        log.info('ring: nobody answered — Ring timed the press out')
+        return false
+      }
+      if (match.state === 'completed') {
+        log.info('ring: someone answered in the Ring app')
+        return true
+      }
+    } catch (e) {
+      log.debug('ring: could not check the ding state', e)
+    }
+  }
+
+  return false
 }

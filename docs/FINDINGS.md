@@ -185,6 +185,21 @@ Push works, and works well:
 This contradicts the previous attempt's experience, where unreliable push was
 the dead end. See the auth note above for the likely reason.
 
+### Ring records whether a press was answered
+
+A ding's terminal `state` in the events API tells you what became of it:
+`timed_out` when nobody picked up, `completed` when someone did. The query
+filter `CameraEventOptions.state` exposes the same idea as
+`missed | accepted | person_detected`.
+
+*Verified* to the extent that our own bridge answering a ding lands it as
+`completed`, and untouched presses land as `timed_out`. That a *person*
+answering in the Ring app also produces `completed` is inferred from the same
+mechanism rather than directly observed. The state is readable within a couple
+of seconds of the ding resolving, which makes it usable as a live signal — it
+is what `ANSWER_MODE=fallback` polls to decide whether the assistant should
+step in.
+
 ### Ring goes deaf during an active call
 
 **A button press while a call is in progress produces no signal at all.**

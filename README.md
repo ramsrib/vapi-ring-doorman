@@ -23,7 +23,7 @@ You decide what it says and how it behaves — that part lives in your
 
 ---
 
-## Before you start — three honest warnings
+## Before you start — two honest warnings
 
 **1. Ring doesn't officially support this.** Ring publishes no public API for
 other apps. This uses [`ring-client-api`](https://github.com/dgreif/ring), a
@@ -31,12 +31,7 @@ community project that works out how the Ring app talks to Ring's servers. It
 works well today, and Ring could break it tomorrow without warning. Only use it
 on a doorbell you own.
 
-**2. It costs money per call.** Vapi charges by the minute for the voice
-assistant — speech recognition, the AI model, and the voice. A short doorbell
-conversation is cents rather than dollars, but it isn't free. Check current
-pricing at [vapi.ai](https://vapi.ai).
-
-**3. It only works while it's running.** This is a program on your computer, not
+**2. It only works while it's running.** This is a program on your computer, not
 a service in the cloud. Close the terminal window and your doorbell goes back to
 being an ordinary doorbell.
 
@@ -151,6 +146,27 @@ finish, then greets whoever is there.
 **To test without walking outside:** `npm run call` starts a conversation
 straight away, no button press needed.
 
+### Choosing when the assistant answers
+
+Two modes, set with `ANSWER_MODE` in `.env`:
+
+| Mode | Behaviour |
+| --- | --- |
+| `immediate` *(default)* | The assistant answers every press. |
+| `fallback` | A person gets first refusal. The assistant waits `FALLBACK_AFTER_SECONDS` (default 25) and only steps in if nobody picks up in the Ring app. |
+
+Ring tracks whether a press was answered, so `fallback` mode reads that rather
+than guessing: a ding that nobody takes ends up `timed_out`, one that someone
+answers ends up `completed`. If the state is still undecided when the timer runs
+out, the assistant answers — a missed visitor is worse than an assistant that
+speaks up unnecessarily.
+
+Keep `FALLBACK_AFTER_SECONDS` under about 60, since that's how long a Ring ding
+lives. And remember the visitor is standing there in silence the whole time —
+20-30s reads as a slow answer, a minute reads as a broken doorbell.
+
+`npm run call` always connects immediately; it has no press to wait on.
+
 ### What happens during a call
 
 - **The chime is muted** while the assistant is talking, so a second press
@@ -202,6 +218,8 @@ All of these live in `.env`, and all have sensible defaults.
 
 | Setting | Does what |
 | --- | --- |
+| `ANSWER_MODE` | `immediate` answers every press; `fallback` lets a person answer first |
+| `FALLBACK_AFTER_SECONDS` | How long `fallback` mode waits before stepping in |
 | `CALL_ANSWER_DELAY_MS` | How long to wait after the press before the assistant speaks, so it doesn't talk over the chime |
 | `AUDIO_PREBUFFER_MS` | Raise if the assistant sounds choppy; lower for slightly faster replies |
 | `MUTE_CHIME_DURING_CALL` | Set to `false` to leave your chime alone during calls |

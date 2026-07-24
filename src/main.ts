@@ -1,6 +1,6 @@
 import { config } from './config.ts'
 import { log } from './log.ts'
-import { connectRing, watchForDings } from './ring.ts'
+import { connectRing, waitForHumanAnswer, watchForDings, type Ding } from './ring.ts'
 import { restoreChimeFromDisk } from './chime.ts'
 import { bridgeCall, type BridgedCall } from './bridge.ts'
 
@@ -18,13 +18,26 @@ let current: BridgedCall | undefined
  * endCall tool, an end-call phrase, Vapi's silence timeout, Enter here, or
  * CALL_MAX_SECONDS.
  */
-async function answer(source: string): Promise<void> {
+async function answer(ding: Ding): Promise<void> {
   if (current) {
-    log.info(`ding (${source}) ignored — a call is already in progress`)
+    log.info(`ding (${ding.source}) ignored — a call is already in progress`)
     return
   }
 
-  log.info(`ding (${source}) — answering`)
+  // `--now` has no ding to follow, and asking for a call on demand means now.
+  if (config.call.answerMode === 'fallback' && ding.id) {
+    const wait = config.call.fallbackAfterSeconds
+    log.info(`ding (${ding.source}) — holding ${wait}s for someone to answer in the Ring app`)
+    if (await waitForHumanAnswer(camera, ding, wait)) {
+      log.info('standing down — a person took the call')
+      return
+    }
+    if (current) return
+    log.info('nobody answered — the assistant is taking it')
+  } else {
+    log.info(`ding (${ding.source}) — answering`)
+  }
+
   const call = bridgeCall(camera)
   current = call
   try {
@@ -37,7 +50,7 @@ async function answer(source: string): Promise<void> {
   }
 }
 
-const dings = watchForDings(camera, (source) => void answer(source))
+const dings = watchForDings(camera, (ding) => void answer(ding))
 
 // Registered before any awaiting work below. Top-level await blocks the rest of
 // module evaluation, so handlers installed at the bottom of this file would not
@@ -61,10 +74,14 @@ if (process.stdin.isTTY) {
 
 if (answerNow) {
   log.info('--now: opening a call without waiting for a button press')
-  await answer('manual')
+  await answer({ source: 'manual' })
   await shutdown('manual call finished')
 } else {
-  log.info('listening for doorbell presses — press the button')
+  log.info(
+    config.call.answerMode === 'fallback'
+      ? `listening — the assistant answers if nobody picks up within ${config.call.fallbackAfterSeconds}s`
+      : 'listening for doorbell presses — press the button',
+  )
   log.info('to end a call: say goodbye, stay silent, or press Enter here')
 }
 

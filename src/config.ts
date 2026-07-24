@@ -96,6 +96,22 @@ export const config = {
      * Restored on exit — see `npm run restore-chime` if a crash leaves it muted.
      */
     muteChimeDuringCall: process.env.MUTE_CHIME_DURING_CALL !== 'false',
+    /**
+     * When the assistant picks up.
+     *
+     *   immediate — answer every press (default)
+     *   fallback  — give a person the chance to answer in the Ring app first,
+     *               and only step in if nobody does
+     */
+    answerMode: (process.env.ANSWER_MODE ?? 'immediate') as 'immediate' | 'fallback',
+    /**
+     * How long `fallback` mode waits before the assistant takes the call.
+     *
+     * Ring's own ding lasts about 60s, so anything longer means the press has
+     * already timed out before we act. Visitors rarely wait that long anyway —
+     * 20-30s tends to feel like a slow answer rather than a broken doorbell.
+     */
+    fallbackAfterSeconds: num('FALLBACK_AFTER_SECONDS', 25),
   },
   debug: process.env.DEBUG === 'true',
   /**
