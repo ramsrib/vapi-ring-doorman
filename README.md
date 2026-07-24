@@ -125,14 +125,20 @@ a mistyped key, or a doorbell that's offline in the Ring app.
 
 ## Using it
 
-**Start it:**
+**Start it** — the assistant answers every press:
 
 ```bash
-npm start                        # the assistant answers every press
-ANSWER_MODE=fallback npm start   # ...or only if you don't pick up first
+npm start
 ```
 
-You'll see:
+**Or let a person answer first** — the assistant only steps in if nobody picks
+up in the Ring app:
+
+```bash
+ANSWER_MODE=fallback npm start
+```
+
+Either way you'll see:
 
 ```
 ring: using "Front Door" ...
@@ -159,14 +165,22 @@ Two modes, set with `ANSWER_MODE` in `.env`:
 Both are one command apart — no file editing needed, because a variable set on
 the command line overrides `.env`:
 
+The assistant answers every press (the default):
+
 ```bash
-# The assistant answers every press (the default)
 npm start
+```
 
-# You get 25 seconds to answer in the Ring app; the assistant steps in if you don't
+You get 25 seconds to answer in the Ring app, and the assistant steps in if you
+don't:
+
+```bash
 ANSWER_MODE=fallback npm start
+```
 
-# Same, but give yourself 40 seconds
+The same, but giving yourself 40 seconds:
+
+```bash
 ANSWER_MODE=fallback FALLBACK_AFTER_SECONDS=40 npm start
 ```
 
