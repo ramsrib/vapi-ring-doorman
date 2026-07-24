@@ -219,6 +219,43 @@ a tone burst in `ring-in.wav`.
 
 ---
 
+## Ring and SIP
+
+Ring's cloud speaks SIP internally, and the ding payload is a complete SIP
+invitation. A live call's `dings/active` entry contains:
+
+```jsonc
+{ "protocol": "sip",
+  "sip_server_ip": "35.164.23.9", "sip_server_port": 8557, "sip_server_tls": true,
+  "sip_from": "sip:<doorbot_id>@ring.com",
+  "sip_to": "sip:<795-char JWT>",
+  "sip_session_id": "<759-char JWT>",
+  "expires_in": 177,
+  "audio_jitter_buffer_ms": 300, "video_jitter_buffer_ms": 300 }
+```
+
+**This does not make the doorbell usable as a SIP client.** It is bound to
+`ring.com`, authenticated by short-lived Ring JWTs, and the device exposes no
+SIP configuration — you cannot point it at an arbitrary SIP URI such as Vapi's
+`sip:<id>@sip.vapi.ai`. Any Ring-to-anything integration needs a bridge that
+terminates Ring's leg and re-originates. That is what this project is.
+
+`ring-client-api` **used** to use SIP (via SIP.js) and moved to WebRTC; v14.3.0
+contains no SIP references at all. Whether these fields still work is untested,
+and probably deprecated.
+
+**Untried alternative:** answer the SIP leg with a B2BUA (Asterisk/FreeSWITCH)
+and bridge to Vapi's SIP URI, which could avoid ffmpeg entirely if codecs line
+up. High risk, undocumented, and it fixes none of the problems we actually have
+— audio works, and the mid-call button suppression is server-side.
+
+**Useful hint hiding in there:** `audio_jitter_buffer_ms: 300`. Ring's own
+client is told to buffer 300 ms for this device's stream — double our
+`AUDIO_PREBUFFER_MS` of 150. If choppiness ever returns, that is the number to
+try, and it comes from Ring rather than from guesswork.
+
+---
+
 ## Live calls
 
 - `startLiveCall()` negotiates **opus** (48 kHz stereo) on this device.
