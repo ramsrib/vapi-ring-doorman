@@ -33,8 +33,10 @@ Call behaviour:
 
 - The greeting is held for `CALL_ANSWER_DELAY_MS` (4 s) so it lands *after* the
   doorbell's own chime instead of underneath it.
-- **Pressing the button again hangs up.** Presses in the first
-  `CALL_COOLDOWN_SECONDS` (5 s) are ignored as an impatient double-press.
+- **The button cannot end a call.** Ring suppresses the doorbell while a call
+  is active: pressing it mid-call produces no push *and* no events-API entry
+  (verified 2026-07-24 — one press logged for a two-minute call, two presses
+  made). There is no signal to react to, so calls end another way (below).
 - The chime is muted for the duration of a call, so a second press doesn't blast
   the tone over the conversation, and restored on the way out. A crash-safe copy
   of the original volume lives in `.chime-state.json`; `npm run restore-chime`
@@ -95,6 +97,23 @@ you press the button:
 2. Set `RING_DING_POLL_SECONDS=5` in `.env`. That polls the events API instead;
    it adds a few seconds of delay but does not depend on push at all.
 
+## Ending a call
+
+Four ways, in the order they usually fire:
+
+| How | Where it comes from |
+| --- | --- |
+| The assistant decides the conversation is over | `endCall` tool, appended per call |
+| The assistant says "goodbye" / "have a great day" | `VAPI_END_CALL_PHRASES` |
+| Nobody says anything | Vapi's own silence timeout |
+| Enter in the terminal, or `CALL_MAX_SECONDS` | this app |
+
+The first two are applied through `assistantOverrides` at call creation —
+`tools:append` and `endCallPhrases` — so the saved Vapi assistant is never
+modified and the behaviour only applies to calls this app makes.
+
+Not on the list: the doorbell button. See above.
+
 ## Tuning audio
 
 Two numbers matter, both measurable rather than guessable:
@@ -123,9 +142,6 @@ it, over a two-minute call — no drift).
 
 Remaining rough edges:
 
-- The assistant has no way to hang up on its own. Vapi's `endCall` function is
-  not enabled on the assistant, so a finished conversation idles until Vapi's
-  own timeout. Pressing the button again ends it from this side.
 - Ring's `alerts.connection` can read `offline` while the device is fine, and
   `camera.data` lags settings changes by a few seconds — read fresh via
   `fetchRingDevices()` when it matters.

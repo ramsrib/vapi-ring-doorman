@@ -61,6 +61,20 @@ export class VapiCall {
             sampleRate: config.audio.sampleRate,
           },
         },
+        /*
+         * Per-call overrides, so the saved assistant is never modified.
+         *
+         * Ring gives us no signal for a button press during an active call —
+         * no push, not even an events-API entry — so the button cannot end a
+         * call. These give the assistant its own way out: the endCall tool lets
+         * it hang up when the conversation concludes, and endCallPhrases catch
+         * the goodbyes it was already saying before idling until timeout.
+         */
+        assistantOverrides: {
+          'tools:append': [{ type: 'endCall' }],
+          endCallPhrases: config.vapi.endCallPhrases,
+          maxDurationSeconds: config.call.maxSeconds,
+        },
       }),
     })
 

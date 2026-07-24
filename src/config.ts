@@ -37,6 +37,14 @@ export const config = {
     apiKey: required('VAPI_API_KEY'),
     assistantId: required('VAPI_ASSISTANT_ID'),
     baseUrl: process.env.VAPI_BASE_URL ?? 'https://api.vapi.ai',
+    /**
+     * Said by the *assistant*, these hang up the call. Applied as a per-call
+     * override, so the saved assistant config is left untouched.
+     */
+    endCallPhrases: (process.env.VAPI_END_CALL_PHRASES ?? 'goodbye,have a great day,bye for now')
+      .split(',')
+      .map((phrase) => phrase.trim())
+      .filter(Boolean),
   },
   audio: {
     /** PCM sample rate used on the Vapi websocket and between the two ffmpeg legs. */

@@ -72,6 +72,13 @@ export interface DingSource {
 export function watchForDings(camera: RingCamera, onDing: (source: string) => void): DingSource {
   const subscription = camera.onDoorbellPressed.subscribe(() => onDing('push'))
 
+  // Every push, not just the ones we act on. Ring's behaviour during an active
+  // live call is undocumented — this shows whether a second press arrives as a
+  // ding, as some other category, or not at all.
+  const notifications = camera.onNewNotification.subscribe((notification) => {
+    log.info(`ring: push received — category "${notification.android_config.category}"`)
+  })
+
   let timer: NodeJS.Timeout | undefined
   if (config.ring.dingPollSeconds > 0) {
     let lastSeenDingId: string | undefined
@@ -106,6 +113,7 @@ export function watchForDings(camera: RingCamera, onDing: (source: string) => vo
   return {
     stop() {
       subscription.unsubscribe()
+      notifications.unsubscribe()
       if (timer) clearInterval(timer)
     },
   }
