@@ -8,11 +8,11 @@
  *   npm run speaker-test              # says a default phrase
  *   SAY="package is at the back" npm run speaker-test
  */
-import { spawnSync } from 'node:child_process'
 import { connectRing } from '../ring.ts'
 import { ReturnAudio } from '../return-audio.ts'
 import { config } from '../config.ts'
 import { log } from '../log.ts'
+import { synthesize } from '../say.ts'
 
 const sampleRate = config.audio.sampleRate
 const phrase = process.env['SAY'] ?? 'Hello, this is a test from the doorbell speaker.'
@@ -26,21 +26,6 @@ function tone(seconds: number): Buffer {
   return pcm
 }
 
-/** macOS `say` -> ffmpeg -> raw PCM at our sample rate. */
-function speech(text: string): Buffer | undefined {
-  if (process.platform !== 'darwin') return undefined
-  const aiff = spawnSync('say', ['-o', '/dev/stdout', '--data-format=LEI16@22050', text], {
-    maxBuffer: 64 * 1024 * 1024,
-  })
-  if (aiff.status !== 0 || aiff.stdout.length === 0) return undefined
-  const converted = spawnSync(
-    'ffmpeg',
-    ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:', '-f', 's16le', '-ar', String(sampleRate), '-ac', '1', 'pipe:1'],
-    { input: aiff.stdout, maxBuffer: 64 * 1024 * 1024 },
-  )
-  return converted.status === 0 && converted.stdout.length > 0 ? converted.stdout : undefined
-}
-
 const { api, camera } = await connectRing()
 
 log.info('opening live call')
@@ -52,7 +37,7 @@ log.info(`ring answered using ${usingOpus ? 'opus' : 'pcmu'}`)
 
 const returnAudio = await ReturnAudio.start(session, usingOpus)
 
-const audio = speech(phrase) ?? tone(3)
+const audio = synthesize(phrase, sampleRate) ?? tone(3)
 log.info(`pushing ${(audio.length / (sampleRate * 2)).toFixed(1)}s of audio to the speaker`)
 
 // Hand it over in real-time-sized pieces; ReturnAudio paces the rest.

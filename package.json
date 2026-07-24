@@ -14,6 +14,7 @@
     "cameras": "node --env-file=.env src/tools/cameras.ts",
     "dings": "node --env-file=.env src/tools/dings.ts",
     "speaker-test": "node --env-file=.env src/tools/speaker-test.ts",
+    "vapi-test": "node --env-file=.env src/tools/vapi-test.ts",
     "auth": "ring-auth-cli",
     "typecheck": "tsc --noEmit"
   },

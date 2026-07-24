@@ -63,11 +63,13 @@ npm start           # listen for button presses (the real thing)
 npm run call        # open a call right now, no button press — fastest way to iterate
 npm run dings       # log presses only, no Vapi — is the push path alive?
 npm run speaker-test  # push local speech out of the doorbell, no Vapi — is return audio alive?
+npm run vapi-test   # hold a conversation with the assistant, no Ring — is the Vapi leg alive?
 npm run cameras     # list devices, pick one for RING_CAMERA
 ```
 
-Those middle two exist because the bridge has exactly two things that can quietly
-fail. Test them in isolation before debugging the whole loop.
+Those three test tools exist because the bridge has a small number of things that
+can quietly fail. Isolate them before debugging the whole loop. `vapi-test` speaks
+into the call with macOS `say` and writes the assistant's audio to `vapi-test.wav`.
 
 ## Known risk: push notifications
 
@@ -82,11 +84,24 @@ you press the button:
 
 ## Status
 
-Verified: builds and typechecks, ffmpeg/libopus present, Vapi assistant
-("Ring - Doorbell") reachable, audio-format contract matches Vapi's websocket
-transport docs.
+**Vapi leg: verified live** (2026-07-24). `npm run vapi-test` held a real
+conversation with the "Ring - Doorbell" assistant — synthesized visitor speech
+in, correct transcripts back (`user — Hi. I have a package for Sriram.`), 23.6 s
+of assistant audio captured to a wav at sane levels. That covers call creation,
+the websocket protocol, the PCM format contract in both directions, and the 20 ms
+frame pacing.
 
-Not yet verified: the live audio path, because the Ring refresh token in `.env`
-expired and re-authenticating needs an interactive 2FA login. Run `npm run auth`,
-then `npm run doctor`, then `npm run speaker-test` — the first real signal is
-hearing your own voice come out of the doorbell.
+**Ring leg: not yet run.** The refresh token in `.env` expired and
+re-authenticating needs an interactive 2FA login:
+
+```bash
+npm run auth      # then paste the token into .env
+npm run doctor    # ring auth should flip to ok
+npm run speaker-test   # first real signal: your voice out of the doorbell
+npm run call           # full bridge, without waiting for a button press
+npm start              # the real thing
+```
+
+Unknowns that only the hardware can settle: whether ding pushes arrive (the old
+project's dead end — fall back to `RING_DING_POLL_SECONDS=5`), and the true
+round-trip latency once opus transcoding sits on both ends.
