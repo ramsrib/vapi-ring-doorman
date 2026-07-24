@@ -128,7 +128,8 @@ a mistyped key, or a doorbell that's offline in the Ring app.
 **Start it:**
 
 ```bash
-npm start
+npm start                        # the assistant answers every press
+ANSWER_MODE=fallback npm start   # ...or only if you don't pick up first
 ```
 
 You'll see:
@@ -154,6 +155,35 @@ Two modes, set with `ANSWER_MODE` in `.env`:
 | --- | --- |
 | `immediate` *(default)* | The assistant answers every press. |
 | `fallback` | A person gets first refusal. The assistant waits `FALLBACK_AFTER_SECONDS` (default 25) and only steps in if nobody picks up in the Ring app. |
+
+Both are one command apart — no file editing needed, because a variable set on
+the command line overrides `.env`:
+
+```bash
+# The assistant answers every press (the default)
+npm start
+
+# You get 25 seconds to answer in the Ring app; the assistant steps in if you don't
+ANSWER_MODE=fallback npm start
+
+# Same, but give yourself 40 seconds
+ANSWER_MODE=fallback FALLBACK_AFTER_SECONDS=40 npm start
+```
+
+In fallback mode the startup line tells you the mode is active:
+
+```
+listening — the assistant answers if nobody picks up within 25s
+```
+
+and a press you leave unanswered reads like this:
+
+```
+ding (push) — holding 25s for someone to answer in the Ring app
+ring: nobody answered — Ring timed the press out
+nobody answered — the assistant is taking it
+bridge: starting Ring live call
+```
 
 Ring tracks whether a press was answered, so `fallback` mode reads that rather
 than guessing: a ding that nobody takes ends up `timed_out`, one that someone
