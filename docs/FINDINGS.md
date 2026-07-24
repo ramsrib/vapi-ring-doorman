@@ -20,22 +20,41 @@ Everything below was observed on this exact setup, on **2026-07-24**.
 ```
 name         Office
 id           704424693
-kind         df_doorbell_clownfish
-model        "Unknown Model"        # see below
-ownership    doorbots               # owned, not authorizedDoorbots (shared)
-power        battery at 59%, external_connection: true  (battery model, wired in)
-firmware     "Up to Date"           # see below
+kind         df_doorbell_clownfish        # API codename
+product      Ring Battery Doorbell        # from the label on the unit
+model no.    5F97F2
+FCC ID       2AEUPBHARG001  (IC 20271-BHARG001)
+power        USB-C or 8-24V AC doorbell transformer; battery at 59%,
+             external_connection: true
+rating       IP65, Type 4
+firmware     "Up to Date"                 # see below
 wifi         -35 dBm, category "good"
+ownership    doorbots                     # owned, not authorizedDoorbots (shared)
 ```
 
-Two quirks in that block:
+**`df_doorbell_clownfish` = Ring Battery Doorbell (model 5F97F2).** Not the
+Plus or the Pro. Ring publishes no codename-to-product mapping and the library
+doesn't know this kind, so the mapping came from reading the label on the back
+of the unit — worth doing early on any new device, since it is the only
+reliable way to know what you are actually talking to. `camera.model` reports
+the literal string `"Unknown Model"` as a result (see below).
+
+**The API's `device_id` is the device's wifi MAC address**, lowercased with the
+separators stripped. *Verified* by comparing it to the MAC printed on the
+label. Treat it as an identifier, not an opaque handle.
+
+**USB-C is power only.** The label says "Power by USB or AC Doorbell
+Transformer", and the Mac enumerates nothing when the device is plugged in —
+`ioreg -rc IOUSBHostDevice` reports zero attached devices and no serial port
+appears. There is no data path, no console, nothing to probe locally.
+
+Two more quirks:
 
 - **`df_doorbell_clownfish` is not in `ring-client-api`'s `RingCameraKind`
   table.** That list tops out at the `scallop` / `cocoa` / `graham_cracker`
-  generation, so this device falls through to the literal string
-  `"Unknown Model"`. Everything we need still works — the unknown kind affects
-  only the model name, not streaming. Ring's public docs don't map this
-  codename to a retail model either; we couldn't identify which product it is.
+  generation, so this device falls through to `"Unknown Model"`. Everything we
+  need still works — the unknown kind affects only the model name, not
+  streaming.
 - **`firmware_version` is the string `"Up to Date"`, not a version number.**
   Both `data.firmware_version` and `getHealth().firmware` return that status
   text, so there is no way to record an actual firmware build from this API —
@@ -78,8 +97,14 @@ successful poll — don't treat it as a hardware fact.
 | @eneris/push-receiver | 4.3.0 (transitive; carries Ring's push) |
 | Vapi | assistant "Ring - Doorbell", websocket transport, `pcm_s16le` @ 16 kHz |
 
-Identifiers deliberately left out of this doc: the device's MAC-style
-`device_id`, the `location_id` UUID, and the wifi SSID.
+Identifiers deliberately left out of this doc: the MAC address (a.k.a. the API's
+`device_id`), the DSN from the label, the `location_id` UUID, and the wifi SSID.
+The model and FCC IDs above are model-level, not unit-level, so they are safe to
+record.
+
+If you ever want the internals, the FCC ID (`2AEUPBHARG001`) pulls up the
+teardown photos and RF test reports in the FCC's public database — the usual
+route to identifying the SoC and radio on a device with no local interface.
 
 Anything below that depends on the model — chime behaviour, the codec Ring
 negotiates, whether the button is swallowed mid-call — should be re-checked on
