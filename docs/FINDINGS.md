@@ -11,31 +11,79 @@ change without notice.
 
 ---
 
-## The device
+## Test environment
+
+Everything below was observed on this exact setup, on **2026-07-24**.
+
+### The device
 
 ```
 name         Office
 id           704424693
 kind         df_doorbell_clownfish
-model        "Unknown Model"        # ring-client-api doesn't know this kind
+model        "Unknown Model"        # see below
 ownership    doorbots               # owned, not authorizedDoorbots (shared)
-power        wired (no battery reported)
+power        battery at 59%, external_connection: true  (battery model, wired in)
+firmware     "Up to Date"           # see below
+wifi         -35 dBm, category "good"
 ```
 
-Relevant settings, as returned by `fetchRingDevices()`:
+Two quirks in that block:
+
+- **`df_doorbell_clownfish` is not in `ring-client-api`'s `RingCameraKind`
+  table.** That list tops out at the `scallop` / `cocoa` / `graham_cracker`
+  generation, so this device falls through to the literal string
+  `"Unknown Model"`. Everything we need still works — the unknown kind affects
+  only the model name, not streaming. Ring's public docs don't map this
+  codename to a retail model either; we couldn't identify which product it is.
+- **`firmware_version` is the string `"Up to Date"`, not a version number.**
+  Both `data.firmware_version` and `getHealth().firmware` return that status
+  text, so there is no way to record an actual firmware build from this API —
+  which means "worked on firmware X" is not a claim we can make.
+
+Settings as returned by `fetchRingDevices()`:
 
 ```jsonc
 {
   "doorbell_volume": 4,             // the ding tone from the doorbell's own speaker
-  "voice_volume": 9,                // live-call speaker volume — a separate control
-  "chime_settings": { "enable": true, "type": 2, "duration": 10 }
+  "voice_volume": 8,                // live-call speaker volume — a separate control
+  "chime_settings": { "enable": true, "type": 2, "duration": 10 },
+  "video_settings": { "hevc_enabled": false, "encryption_enabled": false },
+  "enable_vod": 1
 }
 ```
 
 There are **no Chime devices** on the account and `hasInHomeDoorbell` is
 `false`, so the doorbell's own speaker is the only thing that makes noise.
-That matters: `setInHomeDoorbell()` is useless here, and the only volume lever
-is `doorbell_volume`.
+`setInHomeDoorbell()` is useless here; the only volume lever is
+`doorbell_volume`.
+
+**Beware `hasBattery`.** While the device was offline, `battery_life` came back
+`null`, so `camera.hasBattery` was `false` and our own tooling printed the
+device as "wired". Once online it reports 59%. The property is derived from
+`battery_life`, not from the device kind, so it is only as good as the last
+successful poll — don't treat it as a hardware fact.
+
+### Toolchain
+
+| | |
+| --- | --- |
+| macOS | 26.5.2 (build 25F84), Apple Silicon |
+| Node | v26.2.0 — note `ring-client-api` declares `^20 \|\| ^22 \|\| ^24`, so npm prints an EBADENGINE warning. Works regardless. |
+| npm | 11.13.0 |
+| ffmpeg | 8.1.2, with libopus |
+| ring-client-api | 14.3.0 |
+| werift | 0.22.4 (pinned — must match the library's copy) |
+| ws | 8.21.1 |
+| @eneris/push-receiver | 4.3.0 (transitive; carries Ring's push) |
+| Vapi | assistant "Ring - Doorbell", websocket transport, `pcm_s16le` @ 16 kHz |
+
+Identifiers deliberately left out of this doc: the device's MAC-style
+`device_id`, the `location_id` UUID, and the wifi SSID.
+
+Anything below that depends on the model — chime behaviour, the codec Ring
+negotiates, whether the button is swallowed mid-call — should be re-checked on
+a different doorbell. The audio and API lessons are general.
 
 ---
 
