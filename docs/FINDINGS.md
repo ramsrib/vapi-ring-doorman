@@ -210,12 +210,22 @@ to treat the ding as already answered and swallows further presses. The device
 itself still registers them — it plays the chime tone — so the press is real;
 Ring just never tells the API.
 
-**Untested escape hatch:** if that chime tone reaches the doorbell's own
-microphone, it would arrive in the audio we already receive and could be
-detected. Unknown whether the device's echo canceller strips it, since the tone
-comes from the same speaker the canceller is tuned to remove. To test: run with
-`MUTE_CHIME_DURING_CALL=false` and `RECORD=true`, press mid-call, and look for
-a tone burst in `ring-in.wav`.
+**Acoustic detection: investigated, then dropped.** The one remaining route was
+to leave the chime audible during calls and detect its tone in the microphone
+feed. A recorded call with `MUTE_CHIME_DURING_CALL=false` showed four loud
+events in the mic feed at 13.8 s, 16.4 s, 22.5 s and 25.1 s — two pairs, 2.6 s
+apart within each pair — that were *absent from the assistant's audio* (so not
+echo), *more tonal than verified speech* (38-46% of energy at 1313-1328 Hz
+versus 5-26% during a known utterance), and *produced no transcripts* (Vapi
+heard them but didn't classify them as speech; the assistant asked "Are you
+still there?" between the pairs). Suggestive of the chime, but not conclusive —
+their spectra were broadband rather than a clean tone, which fits either a
+harmonically rich chime through a small speaker or plain speech.
+
+It was dropped without resolving that, because the approach requires the chime
+to be **audible during the conversation**, which is precisely what we mute it to
+avoid. A detector nobody wants to hear the precondition for is not worth
+building.
 
 ---
 
@@ -399,8 +409,11 @@ path. `npm run restore-chime` is the manual escape.
 
 ## Open questions
 
-- Does the chime tone survive the device's echo canceller into the mic feed?
-  (The only remaining route to a working button-press hangup.)
+- Does `mic_volume` (currently 11, range unknown) go higher, and would raising
+  it improve how well the assistant hears visitors?
+- What else is in the device-settings API? It exposes ~28 groups
+  (`audio_settings`, `stream_settings`, `keep_alive_settings`, …) that we have
+  never read.
 - Does push delivery stay reliable over days and weeks? Ours was reliable
   across a single day. `RING_DING_POLL_SECONDS=5` is the fallback if it drifts.
 - Does the device sleep or behave differently on battery models? This one is
