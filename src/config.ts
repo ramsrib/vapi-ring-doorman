@@ -44,17 +44,51 @@ export const config = {
     /** Frame size for the paced writer feeding Ring's speaker. */
     frameMs: num('AUDIO_FRAME_MS', 20),
     /**
-     * Cap on assistant audio buffered toward Ring. Beyond this we drop the
-     * oldest frames — a doorbell conversation wants low latency, not
-     * completeness, and buffered audio can't be un-said after an interruption.
+     * Jitter buffer. After the queue runs dry we hold this much audio before
+     * resuming, so one late websocket frame costs a single pause instead of a
+     * run of half-empty frames. Raise it if the assistant sounds choppy; every
+     * millisecond here is a millisecond of added latency.
+     *
+     * Sized from measurement, not taste: Vapi delivers audio in bursts with
+     * gaps of ~51 ms at p95 and ~54 ms at p99 (`npm run vapi-test` reports
+     * this). 150 ms rides through those comfortably.
      */
-    maxBufferedMs: num('AUDIO_MAX_BUFFERED_MS', 400),
+    prebufferMs: num('AUDIO_PREBUFFER_MS', 150),
+    /**
+     * Cap on assistant audio buffered toward Ring. Beyond this we drop the
+     * oldest frames — buffered audio can't be un-said after an interruption.
+     * Generous enough that ordinary bursts are smoothed rather than clipped.
+     */
+    maxBufferedMs: num('AUDIO_MAX_BUFFERED_MS', 1500),
+    /** Opus bitrate toward the doorbell speaker. */
+    opusBitrate: process.env.AUDIO_OPUS_BITRATE ?? '48k',
+    /**
+     * Fill gaps with faint noise instead of digital silence, so the doorbell's
+     * speaker path never idles and clips the start of the next word.
+     */
+    comfortNoise: process.env.AUDIO_COMFORT_NOISE !== 'false',
   },
   call: {
     /** Hard stop for a single bridged call. Ring live calls die on their own too. */
     maxSeconds: num('CALL_MAX_SECONDS', 300),
-    /** Ignore further dings for this long after a call starts. */
-    cooldownSeconds: num('CALL_COOLDOWN_SECONDS', 15),
+    /**
+     * Presses within this window of answering are ignored (debounce); a press
+     * after it hangs up the call.
+     */
+    cooldownSeconds: num('CALL_COOLDOWN_SECONDS', 5),
+    /**
+     * Wait this long after the press before the assistant starts talking, so
+     * the greeting lands after the doorbell's own chime rather than under it.
+     * Ring's chime duration is in the device settings (currently 10s), but the
+     * audible tone is shorter; tune by ear.
+     */
+    answerDelayMs: num('CALL_ANSWER_DELAY_MS', 4000),
+    /**
+     * Silence the doorbell's chime for the duration of a call, so pressing the
+     * button again mid-conversation doesn't blast the tone over the assistant.
+     * Restored on exit — see `npm run restore-chime` if a crash leaves it muted.
+     */
+    muteChimeDuringCall: process.env.MUTE_CHIME_DURING_CALL !== 'false',
   },
   debug: process.env.DEBUG === 'true',
 }

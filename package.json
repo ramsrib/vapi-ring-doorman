@@ -17,6 +17,7 @@
     "vapi-test": "node --env-file=.env src/tools/vapi-test.ts",
     "encoder-test": "node --env-file=.env src/tools/encoder-test.ts",
     "rtp-probe": "node --env-file=.env src/tools/rtp-probe.ts",
+    "restore-chime": "node --env-file=.env src/tools/restore-chime.ts",
     "auth": "ring-auth-cli",
     "typecheck": "tsc --noEmit"
   },

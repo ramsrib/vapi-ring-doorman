@@ -21,7 +21,14 @@ const outputPath = 'vapi-test.wav'
 const call = await VapiCall.create()
 
 const received: Buffer[] = []
-call.onAudio((pcm) => received.push(pcm))
+const arrivalGaps: number[] = []
+let lastArrival = 0
+call.onAudio((pcm) => {
+  const now = performance.now()
+  if (lastArrival > 0) arrivalGaps.push(now - lastArrival)
+  lastArrival = now
+  received.push(pcm)
+})
 
 let ended = false
 call.onEnded(() => {
@@ -63,6 +70,17 @@ await streamSilence(9000)
 
 const audio = Buffer.concat(received)
 log.info(`received ${(audio.length / (sampleRate * 2)).toFixed(1)}s of assistant audio in ${received.length} chunks`)
+
+// How bursty is Vapi's delivery? This sets the jitter buffer we need on the
+// Ring side — anything above AUDIO_PREBUFFER_MS shows up as a gap in playback.
+if (arrivalGaps.length > 0) {
+  const sorted = [...arrivalGaps].sort((a, b) => a - b)
+  const at = (q: number) => sorted[Math.floor(sorted.length * q)]!.toFixed(0)
+  log.info(
+    `chunk arrival gaps: p50 ${at(0.5)}ms  p95 ${at(0.95)}ms  p99 ${at(0.99)}ms  ` +
+      `max ${Math.max(...arrivalGaps).toFixed(0)}ms`,
+  )
+}
 
 if (audio.length > 0) {
   writeFileSync(outputPath, toWav(audio, sampleRate))

@@ -21,6 +21,7 @@ const fakeSession = {
 
 const sampleRate = config.audio.sampleRate
 const returnAudio = await ReturnAudio.start(fakeSession, true)
+const pacingStartedAt = performance.now()
 
 const speech = synthesize('Testing the doorbell speaker path.', sampleRate)
 if (!speech) {
@@ -35,7 +36,16 @@ for (let offset = 0; offset < speech.length; offset += frameBytes) {
   await new Promise((resolve) => setTimeout(resolve, config.audio.frameMs))
 }
 await new Promise((resolve) => setTimeout(resolve, 1500))
+const pacingSeconds = (performance.now() - pacingStartedAt) / 1000
 returnAudio.stop()
+
+// The whole point of wall-clock pacing: audio fed should track elapsed time.
+const fedSeconds = (returnAudio.stats.framesWritten * config.audio.frameMs) / 1000
+log.info(
+  `pacing: fed ${fedSeconds.toFixed(2)}s of audio in ${pacingSeconds.toFixed(2)}s wall ` +
+    `(${((fedSeconds / pacingSeconds) * 100).toFixed(1)}% of real time, want ~100%)`,
+)
+log.info(`underrun frames: ${returnAudio.stats.underrunFrames}/${returnAudio.stats.framesWritten}`)
 
 const payloadBytes = packets.reduce((total, packet) => total + packet.payload.length, 0)
 const timestamps = packets.map((packet) => packet.header.timestamp)

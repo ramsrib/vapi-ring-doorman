@@ -29,18 +29,31 @@ transport wants raw `pcm_s16le` mono.
 | `src/return-audio.ts` | Assistant audio -> ffmpeg -> RTP -> Ring's speaker |
 | `src/bridge.ts` | Wires one call together and tears it down |
 
-Two decisions worth knowing about:
+Call behaviour:
+
+- The greeting is held for `CALL_ANSWER_DELAY_MS` (4 s) so it lands *after* the
+  doorbell's own chime instead of underneath it.
+- **Pressing the button again hangs up.** Presses in the first
+  `CALL_COOLDOWN_SECONDS` (5 s) are ignored as an impatient double-press.
+- The chime is muted for the duration of a call, so a second press doesn't blast
+  the tone over the conversation, and restored on the way out. A crash-safe copy
+  of the original volume lives in `.chime-state.json`; `npm run restore-chime`
+  puts it back, and startup does so automatically.
+
+Three decisions worth knowing about:
 
 - **We run the return-audio ffmpeg ourselves** instead of using the library's
   `transcodeReturnAudio`. That helper appends caller arguments *after* `-i`, so
   there is no way to declare a raw-PCM input (`-f s16le -ar … -ac …` must come
   before it). We spawn the same pipeline with the input flags in the right place.
-- **Assistant audio is paced into 20 ms frames**, padded with silence when the
-  assistant isn't talking, and dropped from the front past
-  `AUDIO_MAX_BUFFERED_MS`. A continuous stream keeps the opus encoder aligned
-  with the wall clock, so speech arrives paced rather than in bursts, and the
-  latency cap keeps the assistant from replying to something the visitor said a
-  second ago.
+- **Assistant audio is paced to the wall clock**, not one frame per timer tick.
+  A nominal 20 ms `setInterval` actually fires at ~92% of real time on an idle
+  machine, and feeding a live encoder 8% slow starves it — which is audible as
+  choppiness. The pacer ticks finer and writes however many frames are *due*,
+  measured at 99.7% of real time (`npm run encoder-test` reports this).
+- **Gaps are filled with faint noise, not digital silence.** Zeros encode to
+  near-nothing in VBR opus and a receiver that sees near-nothing can let its
+  speaker path idle, clipping the first syllable when speech resumes.
 
 ## Setup
 
@@ -82,38 +95,53 @@ you press the button:
 2. Set `RING_DING_POLL_SECONDS=5` in `.env`. That polls the events API instead;
    it adds a few seconds of delay but does not depend on push at all.
 
-## Status — blocked on the doorbell being offline
+## Tuning audio
 
-Verified live on 2026-07-24:
+Two numbers matter, both measurable rather than guessable:
 
-- **Ring auth and call setup.** `npm run call` authenticates, opens a live call,
-  and Ring answers with opus. Token rotation writes back to `.env` as designed.
-- **The Vapi leg.** `npm run vapi-test` held a real conversation: synthesized
-  visitor speech in, correct transcripts back (`user — Hi. I have a package for
-  Sriram.`), 23.6 s of assistant audio captured to a wav at sane levels.
-- **The speaker leg, up to the handoff.** `npm run encoder-test` pushes PCM
-  through the return-audio pipeline and inspects the result: 163 opus RTP
-  packets, payload type 97, timestamps stepping exactly 960 (20 ms at 48 kHz),
-  contiguous. In a live call, 18.6 s of assistant audio reached this stage.
+| Symptom | Knob | Notes |
+| --- | --- | --- |
+| Choppy assistant audio | `AUDIO_PREBUFFER_MS` | Vapi delivers in bursts — p95 gap ~51 ms, p99 ~54 ms. Default 150 ms rides through; every ms is added latency. `npm run vapi-test` prints the live distribution. |
+| First syllable clipped | `CALL_ANSWER_DELAY_MS`, `AUDIO_COMFORT_NOISE` | Give the chime room, and keep the speaker path warm. |
 
-What is not working, and it isn't the code: **the doorbell is offline.**
-`npm run rtp-probe` opens a live call and counts raw RTP arriving from Ring —
-zero packets, audio *and* video, across 22 s, after which Ring's servers tear the
-call down. The device backs that up: `alerts.connection: "offline"`, null signal
-strength, null wifi name, `ring_id: null`, no events in history. It is owned by
-this account (`doorbots`, not `authorizedDoorbots`), so it isn't a permissions
-problem. Ring's cloud negotiates the session happily; the hardware never joins.
+During a call the bridge logs `underruns Nf` every 5 s. If N climbs while the
+assistant is speaking, the jitter buffer is too small. If N is flat, the audio
+path is clean and any remaining roughness is upstream — Vapi's TTS is natively
+band-limited (measured 36 dB down above 8 kHz), so raising `AUDIO_SAMPLE_RATE`
+past 16000 only upsamples and costs bytes.
 
-Once the doorbell is back on wifi:
+## Status — working
+
+Confirmed end to end on 2026-07-24 with the real doorbell: pressing the button
+fires a Ring push, the bridge answers, and you hold a conversation with the
+assistant through the doorbell's speaker and mic. Push notifications — the thing
+that killed the previous attempt — fire reliably, ~1.2 s from press to answer.
+
+Audio quality after tuning: zero underruns during speech, nothing dropped, both
+legs recorded at matching durations (114.38 s from the doorbell vs 114.60 s to
+it, over a two-minute call — no drift).
+
+Remaining rough edges:
+
+- The assistant has no way to hang up on its own. Vapi's `endCall` function is
+  not enabled on the assistant, so a finished conversation idles until Vapi's
+  own timeout. Pressing the button again ends it from this side.
+- Ring's `alerts.connection` can read `offline` while the device is fine, and
+  `camera.data` lags settings changes by a few seconds — read fresh via
+  `fetchRingDevices()` when it matters.
+
+## Diagnosing
+
+Each leg can be tested alone, which is how every problem so far was localised:
 
 ```bash
-npm run doctor          # "target camera reachable" should stop failing
-npm run rtp-probe       # expect a rising packet count, not zeros
-npm run speaker-test    # first audible signal: your voice out of the doorbell
-npm run call            # full bridge on demand
-npm start               # the real thing — press the button
+npm run doctor        # prerequisites, Ring auth, Vapi assistant
+npm run dings         # is the push path alive?          (no Vapi)
+npm run rtp-probe     # is the device actually streaming? (no Vapi, no ffmpeg)
+npm run encoder-test  # is the speaker leg well-formed?   (no Ring, no Vapi)
+npm run vapi-test     # is the Vapi leg alive?            (no Ring)
+npm run speaker-test  # your voice out of the doorbell    (no Vapi)
 ```
 
-Still unknown until then: whether ding pushes arrive (the old project's dead
-end — fall back to `RING_DING_POLL_SECONDS=5`), and real round-trip latency with
-opus transcoding on both ends.
+`rtp-probe` is the one that proved a dead call was an offline doorbell rather
+than a bug: it counts raw RTP upstream of everything we do.
