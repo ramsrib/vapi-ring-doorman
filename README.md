@@ -1,17 +1,216 @@
 # vapi-ring-doorman
 
-Your Ring doorbell, answered by a [Vapi](https://vapi.ai) voice assistant.
+**Let an AI assistant answer your Ring doorbell.**
 
-Press the button and the assistant picks up — the visitor talks to it through the
-doorbell's own speaker and microphone, in real time, and it hangs up when the
-conversation is done.
+Someone presses your doorbell. Instead of ringing into an empty house, a voice
+assistant picks up and talks to them through the doorbell's own speaker — and
+listens through its microphone. It can greet visitors, take a message, tell a
+courier where to leave a package, and hang up when the conversation is over.
 
-> **Unofficial.** Ring publishes no third-party API. This is built on
-> [`ring-client-api`](https://github.com/dgreif/ring), which reverse-engineers
-> the app's, and Ring can break it without notice. Vapi calls cost money per
-> minute. Use on a doorbell you own.
+It sounds like this:
 
-## How it works
+```
+🔔  *ding-dong*
+    Assistant:  Hello there! This is the doorbell. How can I help you?
+    Visitor:    Hi, I have a package for Alex.
+    Assistant:  Thanks! Could you leave it behind the planter by the door?
+    Visitor:    Sure, will do. Bye!
+    Assistant:  Have a great day.   *call ends*
+```
+
+You decide what it says and how it behaves — that part lives in your
+[Vapi](https://vapi.ai) assistant, not in this code.
+
+---
+
+## Before you start — three honest warnings
+
+**1. Ring doesn't officially support this.** Ring publishes no public API for
+other apps. This uses [`ring-client-api`](https://github.com/dgreif/ring), a
+community project that works out how the Ring app talks to Ring's servers. It
+works well today, and Ring could break it tomorrow without warning. Only use it
+on a doorbell you own.
+
+**2. It costs money per call.** Vapi charges by the minute for the voice
+assistant — speech recognition, the AI model, and the voice. A short doorbell
+conversation is cents rather than dollars, but it isn't free. Check current
+pricing at [vapi.ai](https://vapi.ai).
+
+**3. It only works while it's running.** This is a program on your computer, not
+a service in the cloud. Close the terminal window and your doorbell goes back to
+being an ordinary doorbell.
+
+---
+
+## What you'll need
+
+- **A Ring doorbell** you own, on wifi and working in the Ring app
+- **A computer** to run it on — a Mac, a Linux box, or a Raspberry Pi. It has to
+  stay on and awake for the doorbell to be answered.
+- **A Vapi account** with an assistant ([vapi.ai](https://vapi.ai))
+- **Your Ring login**, including the two-factor code Ring sends you
+- About 20 minutes for first-time setup
+
+---
+
+## Setup
+
+### 1. Install the two things this needs
+
+**Node.js** 22.18 or newer, from [nodejs.org](https://nodejs.org), and
+**ffmpeg**, which handles the audio conversion.
+
+On a Mac, with [Homebrew](https://brew.sh):
+
+```bash
+brew install node ffmpeg
+```
+
+On Debian or Ubuntu:
+
+```bash
+sudo apt install nodejs ffmpeg
+```
+
+### 2. Download this project and install it
+
+```bash
+git clone https://github.com/ramsrib/vapi-ring-doorman.git
+cd vapi-ring-doorman
+npm install
+```
+
+### 3. Create your settings file
+
+```bash
+cp .env.example .env
+```
+
+`.env` is where your keys and tokens live. It's deliberately excluded from
+version control — never share it or commit it.
+
+### 4. Create your Vapi assistant
+
+In the [Vapi dashboard](https://dashboard.vapi.ai), create an assistant and give
+it instructions. Something like:
+
+> You are a friendly doorbell assistant. Greet the visitor and ask how you can
+> help. Keep replies short — under about 15 seconds. If it's a delivery, ask them
+> to leave the package by the door. If they're looking for someone, offer to take
+> a message. Be polite, and say goodbye when the conversation is finished.
+
+Then copy two values into `.env`:
+
+- `VAPI_API_KEY` — from your Vapi account settings
+- `VAPI_ASSISTANT_ID` — shown on the assistant you just created
+
+### 5. Connect your Ring account
+
+```bash
+npm run auth
+```
+
+This asks for your Ring email, password, and two-factor code, then prints a long
+**refresh token**. Copy it into `.env` as `RING_REFRESH_TOKEN`.
+
+> That token grants access to your Ring account — treat it like a password, keep
+> it in `.env`, and put it nowhere else. Ring replaces it periodically as it's
+> used, and this app saves each new one for you automatically.
+
+### 6. Check everything works
+
+```bash
+npm run doctor
+```
+
+Every line should say `ok`. If one says `XX` it tells you what's wrong — usually
+a mistyped key, or a doorbell that's offline in the Ring app.
+
+---
+
+## Using it
+
+**Start it:**
+
+```bash
+npm start
+```
+
+You'll see:
+
+```
+ring: using "Front Door" ...
+listening for doorbell presses — press the button
+```
+
+Now go press your doorbell. The assistant waits a few seconds for the chime to
+finish, then greets whoever is there.
+
+**Leave that window open.** Press `Ctrl-C` when you want to stop.
+
+**To test without walking outside:** `npm run call` starts a conversation
+straight away, no button press needed.
+
+### What happens during a call
+
+- **The chime is muted** while the assistant is talking, so a second press
+  doesn't blast the ding over the conversation. It's restored afterwards.
+- **The button can't hang up.** Ring ignores the doorbell button while a call is
+  in progress, so there's nothing for this app to listen for. Calls end when the
+  assistant decides the conversation is over, when it says goodbye, when nobody
+  speaks for a while, or when you press Enter in the terminal.
+- **Progress is printed** every few seconds:
+
+  ```
+  bridge: ring->vapi 10.6s  vapi->ring 10.6s  underruns 176f  dropped 0.00s
+  ```
+
+  The first two numbers are seconds of audio travelling each way. Both climbing
+  together means the conversation is flowing properly.
+
+---
+
+## If something goes wrong
+
+Each part can be tested on its own, which is far faster than guessing.
+
+| What you're seeing | Try this | What it tells you |
+| --- | --- | --- |
+| Won't start at all | `npm run doctor` | Checks your keys, Ring login, and ffmpeg |
+| Nothing happens when you press the button | `npm run dings` | Whether Ring is telling us about presses |
+| Assistant talks, but hears nothing | `npm run rtp-probe` | Whether the doorbell is really sending audio |
+| Visitor hears nothing | `npm run speaker-test` | Plays your voice out of the doorbell |
+| Doorbell fine, assistant silent | `npm run vapi-test` | Tests the assistant with no doorbell involved |
+| Assistant sounds choppy | Raise `AUDIO_PREBUFFER_MS` in `.env` | Smooths uneven audio, at the cost of a little delay |
+| Chime stayed silent after a crash | `npm run restore-chime` | Puts the doorbell's ding back |
+
+**The most confusing failure, worth knowing in advance:** if your doorbell is
+offline, a call still appears to connect and the assistant still talks — but no
+audio ever arrives from the door. `npm run rtp-probe` is how you tell. If it
+counts zero packets, the doorbell isn't streaming and nothing in this app can fix
+that; check it in the Ring app.
+
+To capture a call for closer inspection, set `RECORD=true` in `.env`. You'll get
+`ring-in.wav` (what the doorbell heard) and `vapi-in.wav` (what the assistant
+said).
+
+---
+
+## Settings worth knowing
+
+All of these live in `.env`, and all have sensible defaults.
+
+| Setting | Does what |
+| --- | --- |
+| `CALL_ANSWER_DELAY_MS` | How long to wait after the press before the assistant speaks, so it doesn't talk over the chime |
+| `AUDIO_PREBUFFER_MS` | Raise if the assistant sounds choppy; lower for slightly faster replies |
+| `MUTE_CHIME_DURING_CALL` | Set to `false` to leave your chime alone during calls |
+| `CALL_MAX_SECONDS` | Hard limit on how long a single call can last |
+| `RING_CAMERA` | Which doorbell to use, if you have more than one (`npm run cameras` lists them) |
+
+---
+
+## For developers
 
 ```
 button press (Ring push notification)
@@ -24,9 +223,9 @@ visitor <- Ring speaker <- WebRTC opus <- ffmpeg <- PCM 16k <- ws <- Vapi
 
 Both legs are ffmpeg transcodes because the two sides speak different audio:
 Ring negotiates opus (48 kHz stereo) or pcmu over WebRTC, while Vapi's websocket
-transport wants raw `pcm_s16le` mono. Vapi's websocket transport is what makes
-this tractable at all — no phone number, no SIP, no WebRTC on that side, just
-PCM frames over a socket.
+transport wants raw `pcm_s16le` mono. That websocket transport is what makes this
+tractable — no phone number, no SIP, no WebRTC on the Vapi side, just PCM frames
+over a socket.
 
 | File | Role |
 | --- | --- |
@@ -38,112 +237,21 @@ PCM frames over a socket.
 | `src/bridge.ts` | Wires one call together and tears it down |
 | `src/chime.ts` | Mutes and restores the doorbell chime |
 
-## Requirements
+TypeScript runs directly on Node 22.18+ with no build step. `npm run typecheck`
+type-checks the project; `npm run encoder-test` verifies the audio pipeline with
+no hardware attached.
 
-- Node 22.18+ (runs the TypeScript directly, no build step)
-- ffmpeg with libopus (`brew install ffmpeg`)
-- A Ring doorbell you own, and a Vapi account with an assistant
+**[docs/FINDINGS.md](docs/FINDINGS.md) is worth reading before changing
+anything.** It documents Ring's undocumented behaviour — the offline device that
+fakes a working call, the button going dead mid-call, cached data that lies after
+a settings write — plus the audio pitfalls (Node timer drift starving the
+encoder, Vapi's bursty delivery) and the exact device and versions everything was
+verified against.
 
-## Setup
-
-```bash
-npm install
-cp .env.example .env
-npm run auth      # interactive: Ring email, password, 2FA -> refresh token
-npm run doctor    # checks node, ffmpeg, Ring auth, and the Vapi assistant
-```
-
-Paste the token from `npm run auth` into `.env` as `RING_REFRESH_TOKEN`. Ring
-rotates that token as it's used and this app writes the new one back to `.env`
-automatically — don't strip that out, because a stale token fails in ways that
-look like "push notifications stopped working" rather than an auth error.
-
-## Running
-
-```bash
-npm start     # listen for button presses — the real thing
-npm run call  # answer immediately without a press, for iterating
-```
-
-While a call runs, each line tells you whether audio is actually crossing:
-
-```
-bridge: ring->vapi 10.6s  vapi->ring 10.6s  underruns 176f  dropped 0.00s
-```
-
-Both counters climbing together is healthy. `underruns` climbing *while the
-assistant speaks* means the jitter buffer is too small.
-
-## Ending a call
-
-The doorbell button starts calls; it cannot end them. Ring suppresses the button
-while a call is active — no push, no events-API entry, nothing to react to
-(see [docs/FINDINGS.md](docs/FINDINGS.md)). Calls end four other ways:
-
-| How | Where it comes from |
-| --- | --- |
-| The assistant decides the conversation is over | `endCall` tool, appended per call |
-| It says "goodbye" / "have a great day" | `VAPI_END_CALL_PHRASES` |
-| Nobody says anything | Vapi's silence timeout |
-| Enter in the terminal, or `CALL_MAX_SECONDS` | this app |
-
-The first two are applied through `assistantOverrides` at call creation, so your
-saved Vapi assistant is never modified.
-
-## The chime
-
-The doorbell's own chime is muted for the duration of a call, so a second press
-doesn't blast the tone over the conversation, and restored afterwards. The
-original volume is saved to `.chime-state.json` first — muting someone's
-doorbell is a change to their house, and a crash between mute and restore would
-otherwise leave it silent with no clue why. Startup restores it automatically,
-and `npm run restore-chime` is the manual escape. Set
-`MUTE_CHIME_DURING_CALL=false` to leave it alone.
-
-## Diagnosing
-
-Each leg can be tested on its own, which is how every problem here was found:
-
-```bash
-npm run doctor        # prerequisites, Ring auth, Vapi assistant
-npm run dings         # is the push path alive?          (no Vapi)
-npm run rtp-probe     # is the device actually streaming? (no Vapi, no ffmpeg)
-npm run encoder-test  # is the speaker leg well-formed?   (no Ring, no Vapi)
-npm run vapi-test     # is the Vapi leg alive?            (no Ring)
-npm run speaker-test  # your voice out of the doorbell    (no Vapi)
-npm run cameras       # list devices, to pin RING_CAMERA
-npm run press-probe   # does your device signal a mid-call press?
-```
-
-`rtp-probe` is the one that matters most: an offline doorbell still lets a call
-connect, negotiate a codec, and report "audio flowing", while sending zero RTP.
-It counts raw packets upstream of everything else, so zeros mean the device
-isn't streaming and the code is fine.
-
-`RECORD=true` writes each leg of a call to a wav on hangup — `ring-in.wav` is
-what the doorbell heard, `vapi-in.wav` what the assistant said. Fastest way to
-tell a dead microphone from a dead speaker.
-
-## Tuning audio
-
-| Symptom | Knob | Notes |
-| --- | --- | --- |
-| Choppy assistant audio | `AUDIO_PREBUFFER_MS` | Vapi delivers in bursts — p95 gap ~51 ms. Default 150 ms rides through; every ms is added latency. `npm run vapi-test` prints the live distribution. |
-| Greeting overlaps the chime | `CALL_ANSWER_DELAY_MS` | How long to wait after the press before the assistant speaks. |
-| First syllable clipped | `AUDIO_COMFORT_NOISE` | Keeps the speaker path from idling between words. |
-
-Raising `AUDIO_SAMPLE_RATE` past 16000 is usually pointless: Vapi's built-in
-voices are band-limited to ~8 kHz, so higher rates only upsample. A
-higher-fidelity voice provider may change that — measure before assuming.
-
-## What we learned
-
-[docs/FINDINGS.md](docs/FINDINGS.md) documents Ring's undocumented behaviour —
-the offline device that fakes a working call, the button going dead mid-call,
-cached data that lies after a settings write — plus the audio pitfalls
-(Node timer drift starving the encoder, Vapi's bursty delivery) and the exact
-device and versions everything was verified against. Read it before debugging.
+Contributions welcome. Behaviour in `src/jitter-buffer.ts` and the pacing loop in
+`src/return-audio.ts` was tuned by measurement, so please check `FINDINGS.md`
+before changing those numbers.
 
 ## License
 
-MIT
+[MIT](LICENSE) — do whatever you like with it.
