@@ -6,6 +6,10 @@ the visitor talks to it out of the Ring speaker and mic, in real time.
 Written from scratch against `ring-client-api@14.3.0`. The earlier attempt lives in
 `~/Projects/archive/misc/ring-experiments/` and is not referenced by any of this code.
 
+**[docs/FINDINGS.md](docs/FINDINGS.md)** collects what we learned about the device
+and both APIs — Ring's undocumented behaviour, the audio pitfalls, and the traps
+that cost the most time. Read it before debugging anything here.
+
 ## How it works
 
 ```
